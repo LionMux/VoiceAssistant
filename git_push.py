@@ -9,9 +9,12 @@ def run_git_command(cmd, check=True):
     try:
         result = subprocess.run(cmd, shell=True, check=check, 
                               capture_output=True, text=True, cwd=Path(__file__).parent)
-        return result.stdout.strip(), result.returncode
+        # Объединяем stdout и stderr, так как Git пишет в оба потока
+        output = result.stdout + result.stderr
+        return output.strip(), result.returncode
     except subprocess.CalledProcessError as e:
-        return e.stderr.strip(), e.returncode
+        output = e.stdout + e.stderr
+        return output.strip(), e.returncode
 
 def ensure_gitignore():
     """Проверяет наличие .gitignore и добавляет config.py если нужно"""
@@ -33,6 +36,13 @@ def main():
     # Проверяем, инициализирован ли git
     if not os.path.exists('.git'):
         print("❌ Ошибка: Git репозиторий не инициализирован. Запустите 'git init'")
+        sys.exit(1)
+    
+    # Проверяем, настроен ли remote
+    remote_output, _ = run_git_command("git remote -v")
+    if not remote_output:
+        print("❌ Ошибка: Remote репозиторий не настроен.")
+        print("   Выполните: git remote add origin <URL_вашего_репозитория>")
         sys.exit(1)
     
     # Убеждаемся что config.py в .gitignore
@@ -66,7 +76,11 @@ def main():
     
     # Делаем коммит
     print(f"\n💾 Коммитим: {commit_msg}")
-    run_git_command(f'git commit -m "{commit_msg}"')
+    output, returncode = run_git_command(f'git commit -m "{commit_msg}"', check=False)
+    
+    if returncode != 0:
+        print(f"❌ Ошибка при коммите: {output}")
+        sys.exit(1)
     
     # Получаем текущую ветку
     branch, _ = run_git_command("git rev-parse --abbrev-ref HEAD")
@@ -76,12 +90,18 @@ def main():
     output, returncode = run_git_command(f"git push origin {branch}", check=False)
     
     # Если push не удался из-за удалённых изменений
-    if returncode != 0 and "fetch first" in output:
+    if returncode != 0 and ("fetch first" in output or "rejected" in output):
         print("⚠️  Обнаружены изменения на GitHub. Синхронизирую...")
-        run_git_command(f"git pull --rebase origin {branch}")
+        sync_output, sync_code = run_git_command(f"git pull --rebase origin {branch}", check=False)
+        
+        if sync_code != 0:
+            print(f"❌ Ошибка синхронизации: {sync_output}")
+            sys.exit(1)
+            
         print("📤 Повторная отправка на GitHub...")
-        run_git_command(f"git push origin {branch}")
-    elif returncode != 0:
+        output, returncode = run_git_command(f"git push origin {branch}", check=False)
+    
+    if returncode != 0:
         print(f"❌ Ошибка Git: {output}")
         sys.exit(1)
     
