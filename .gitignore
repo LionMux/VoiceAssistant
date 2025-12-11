@@ -1,1 +1,6 @@
 config.py
+git_push.py
+telegram_bot_runner.py
+telegram_bot_setup.py
+telegram_bot.py
+test_open_and_devices.py
