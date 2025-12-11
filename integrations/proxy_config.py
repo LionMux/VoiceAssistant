@@ -10,6 +10,7 @@ import time
 import tempfile
 import zipfile
 import platform
+import psutil 
 from urllib.parse import urlparse, parse_qs, unquote
 
 # === НАСТРОЙКИ ===
@@ -20,6 +21,20 @@ SOCKS_PORT = 10808
 _xray_process = None
 _xray_config_file = None
 
+def _kill_existing_xray():
+    """Убивает все старые процессы xray.exe"""
+    killed = 0
+    for proc in psutil.process_iter(['pid', 'name']):
+        try:
+            if proc.info['name'] and 'xray' in proc.info['name'].lower():
+                proc.kill()
+                killed += 1
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    
+    if killed > 0:
+        print(f"🧹 Убито {killed} старых процессов Xray")
+        time.sleep(1)  # Даем время освободить порт
 
 def _get_xray_path():
     """Путь к Xray executable"""
@@ -290,7 +305,7 @@ def _create_xray_config(outbound):
 def start_xray_tunnel():
     """Запускает Xray процесс в фоновом режиме"""
     global _xray_process, _xray_config_file
-    
+    _kill_existing_xray()
     # Если уже запущен - ничего не делаем
     if _xray_process and _xray_process.poll() is None:
         return True
@@ -345,13 +360,16 @@ def start_xray_tunnel():
         try:
             print(f"🚀 Попытка {i+1}: запуск VPN туннеля...")
             
+            # ← ДОБАВЬ ДЕБАГ ВЫВОД ↓
+            print(f"   📄 Xray path: {xray_path}")
+            print(f"   📄 Config file: {_xray_config_file}")
+            
             _xray_process = subprocess.Popen(
                 [xray_path, "run", "-config", _xray_config_file],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
             )
-            
             
             # Даем время на запуск
             time.sleep(4)
@@ -361,12 +379,22 @@ def start_xray_tunnel():
                 print(f"✅ VPN туннель активен (порт {SOCKS_PORT})")
                 return True
             else:
-                # Читаем ошибку
+                # ← ЗАМЕНИ ЭТОТ БЛОК ↓
+                # Читаем ПОЛНЫЙ вывод stderr и stdout
+                stdout_output = _xray_process.stdout.read().decode('utf-8', errors='ignore')
                 stderr_output = _xray_process.stderr.read().decode('utf-8', errors='ignore')
+                
+                print(f"   ❌ Конфиг #{i+1} не работает")
+                print(f"   📋 Exit code: {_xray_process.returncode}")
+                
+                if stdout_output:
+                    print(f"   📤 STDOUT:\n{stdout_output}")
+                
                 if stderr_output:
-                    print(f"   ⚠️ Ошибка: {stderr_output[:200]}")
-                print(f"   ❌ Конфиг #{i+1} не работает, пробуем следующий...")
+                    print(f"   📤 STDERR:\n{stderr_output}")  # ← БЕЗ ОБРЕЗКИ!
+                
                 continue
+
                 
         except Exception as e:
             print(f"   ⚠️ Ошибка запуска: {e}")
@@ -381,6 +409,16 @@ def get_proxy():
     Главная функция - вызывается из spotify_manager.py
     Возвращает proxies dict для использования с spotipy
     """
+    global _xray_process
+    
+    # Если процесс уже запущен и жив - используем его
+    if _xray_process and _xray_process.poll() is None:
+        proxy_url = f"socks5://127.0.0.1:{SOCKS_PORT}"
+        return {
+            "http": proxy_url,
+            "https": proxy_url
+        }
+    
     success = start_xray_tunnel()
     
     if success:
