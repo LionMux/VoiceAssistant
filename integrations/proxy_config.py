@@ -352,6 +352,7 @@ def start_xray_tunnel():
                 creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
             )
             
+            
             # Даем время на запуск
             time.sleep(4)
             
