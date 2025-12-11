@@ -11,8 +11,7 @@ def run_git_command(cmd, check=True):
                               capture_output=True, text=True, cwd=Path(__file__).parent)
         return result.stdout.strip(), result.returncode
     except subprocess.CalledProcessError as e:
-        print(f"❌ Ошибка Git: {e.stderr}")
-        sys.exit(1)
+        return e.stderr.strip(), e.returncode
 
 def ensure_gitignore():
     """Проверяет наличие .gitignore и добавляет config.py если нужно"""
@@ -69,10 +68,22 @@ def main():
     print(f"\n💾 Коммитим: {commit_msg}")
     run_git_command(f'git commit -m "{commit_msg}"')
     
-    # Пушим на GitHub
-    print("📤 Отправляем на GitHub...")
+    # Получаем текущую ветку
     branch, _ = run_git_command("git rev-parse --abbrev-ref HEAD")
-    run_git_command(f"git push origin {branch}")
+    
+    # Пытаемся запушить
+    print("📤 Отправляем на GitHub...")
+    output, returncode = run_git_command(f"git push origin {branch}", check=False)
+    
+    # Если push не удался из-за удалённых изменений
+    if returncode != 0 and "fetch first" in output:
+        print("⚠️  Обнаружены изменения на GitHub. Синхронизирую...")
+        run_git_command(f"git pull --rebase origin {branch}")
+        print("📤 Повторная отправка на GitHub...")
+        run_git_command(f"git push origin {branch}")
+    elif returncode != 0:
+        print(f"❌ Ошибка Git: {output}")
+        sys.exit(1)
     
     print("\n✅ Проект успешно отправлен на GitHub!")
 
