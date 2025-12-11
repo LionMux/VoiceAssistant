@@ -9,34 +9,72 @@ def run_git_command(cmd, check=True):
     try:
         result = subprocess.run(cmd, shell=True, check=check, 
                               capture_output=True, text=True, cwd=Path(__file__).parent)
-        return result.stdout.strip()
+        return result.stdout.strip(), result.returncode
     except subprocess.CalledProcessError as e:
         print(f"❌ Ошибка Git: {e.stderr}")
         sys.exit(1)
 
+def ensure_gitignore():
+    """Проверяет наличие .gitignore и добавляет config.py если нужно"""
+    gitignore_path = Path('.gitignore')
+    
+    if not gitignore_path.exists():
+        print("📝 Создаю .gitignore...")
+        gitignore_path.write_text('config.py\n')
+    else:
+        content = gitignore_path.read_text()
+        if 'config.py' not in content:
+            print("📝 Добавляю config.py в .gitignore...")
+            with open(gitignore_path, 'a') as f:
+                f.write('\nconfig.py\n')
+
 def main():
-    print("🚀 Автоматическая отправка проекта на GitHub")
+    print("🚀 Автоматическая отправка проекта на GitHub\n")
     
     # Проверяем, инициализирован ли git
     if not os.path.exists('.git'):
         print("❌ Ошибка: Git репозиторий не инициализирован. Запустите 'git init'")
         sys.exit(1)
     
+    # Убеждаемся что config.py в .gitignore
+    ensure_gitignore()
+    
+    # Проверяем наличие изменений
+    status_output, _ = run_git_command("git status --porcelain")
+    
+    if not status_output:
+        print("ℹ️  Нет изменений для коммита. Рабочее дерево чистое.")
+        print("   Измените какие-нибудь файлы и попробуйте снова.")
+        sys.exit(0)
+    
+    print(f"📝 Найдено изменений: {len(status_output.splitlines())}")
+    
     # Добавляем все изменения
     print("📁 Добавляем файлы...")
     run_git_command("git add .")
     
-    # Делаем коммит (можно передать сообщение через аргумент)
-    commit_msg = sys.argv[1] if len(sys.argv) > 1 else "Авто-коммит из скрипта"
-    print(f"💾 Коммитим: {commit_msg}")
+    # Запрашиваем сообщение коммита у пользователя
+    print("\n💬 Введите сообщение коммита:")
+    commit_msg = input("> ").strip()
+    
+    # Проверяем, что сообщение не пустое
+    if not commit_msg:
+        print("⚠️ Сообщение коммита не может быть пустым!")
+        commit_msg = input("Попробуйте ещё раз: ").strip()
+        if not commit_msg:
+            print("❌ Отмена операции")
+            sys.exit(1)
+    
+    # Делаем коммит
+    print(f"\n💾 Коммитим: {commit_msg}")
     run_git_command(f'git commit -m "{commit_msg}"')
     
-    # Пушим на GitHub (main или master)
+    # Пушим на GitHub
     print("📤 Отправляем на GitHub...")
-    branch = run_git_command("git rev-parse --abbrev-ref HEAD").strip()
+    branch, _ = run_git_command("git rev-parse --abbrev-ref HEAD")
     run_git_command(f"git push origin {branch}")
     
-    print("✅ Проект успешно отправлен на GitHub!")
+    print("\n✅ Проект успешно отправлен на GitHub!")
 
 if __name__ == "__main__":
     main()
