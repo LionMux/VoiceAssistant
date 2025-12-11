@@ -14,7 +14,8 @@ SPOTIFY_REDIRECT_URI = "http://127.0.0.1:8888/callback"
 SPOTIFY_SCOPE = [
     "user-modify-playback-state",
     "user-read-playback-state",
-    "user-read-currently-playing"
+    "user-read-currently-playing",
+    "user-read-recently-played"
 ]
 
 
@@ -194,8 +195,33 @@ class SpotifyManager:
             # Шаг 3: Берем первое устройство и включаем трек
             device = devices[0]
             device_id = device['id']
-            
             self.sp.start_playback(device_id=device_id, uris=[track_uri])
+
+            # ← ВСТАВЬ ЭТОТ БЛОК СЮДА ↓
+            # Шаг 4: Добавляем похожие треки в очередь
+            try:
+                # Извлекаем track_id
+                track_id = track_uri.split(':')[-1]
+                track_data = self.sp.track(track_id)
+                artist_id = track_data['artists'][0]['id']
+                
+                # Получаем топ треки артиста
+                top_tracks = self.sp.artist_top_tracks(artist_id, country='US')
+                
+                # Формируем список URI: первый трек + до 20 похожих
+                playlist_uris = [track_uri]  # Начинаем с запрошенного трека
+                for track in top_tracks['tracks'][:20]:
+                    if track['uri'] != track_uri:  # Не дублируем первый трек
+                        playlist_uris.append(track['uri'])
+                
+                # Включаем ВСЁ СРАЗУ - это очистит старую очередь!
+                self.sp.start_playback(device_id=device_id, uris=playlist_uris)
+                print(f"✅ Запущен плейлист из {len(playlist_uris)} треков")
+                
+            except Exception as e:
+                print(f"⚠️ Очередь недоступна")
+            # ← КОНЕЦ БЛОКА
+
             return True
             
         except Exception as e:

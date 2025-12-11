@@ -232,12 +232,12 @@ class WhisperRecognizer:
             if detected_lang not in ['ru', 'en']:
                 print(f"⚠️ Определён неподдерживаемый язык: {detected_lang} ({confidence:.2%})")
                 print(f"   Распознано: '{result_text}'")
-                print(f"   Попробуем интерпретировать как русский...")
+                print(f"   Сравниваем уверенность для ru vs en...")
                 
-                # Пробуем распознать заново как английский
-                segments_ru, _ = self.model.transcribe(
+                # Распознаём как РУССКИЙ
+                segments_ru, info_ru = self.model.transcribe(
                     audio_array,
-                    language='ru',  # Принудительно русский
+                    language='ru',
                     task="transcribe",
                     beam_size=1,
                     best_of=1,
@@ -246,9 +246,34 @@ class WhisperRecognizer:
                     condition_on_previous_text=False,
                     word_timestamps=False
                 )
+                text_ru = " ".join([segment.text.strip() for segment in segments_ru])
+                confidence_ru = info_ru.language_probability
                 
-                result_text = " ".join([segment.text.strip() for segment in segments_ru])
-                print(f"   📝 Результат (ru): '{result_text}'")
+                # Распознаём как АНГЛИЙСКИЙ
+                segments_en, info_en = self.model.transcribe(
+                    audio_array,
+                    language='en',
+                    task="transcribe",
+                    beam_size=1,
+                    best_of=1,
+                    vad_filter=True,
+                    temperature=0.0,
+                    condition_on_previous_text=False,
+                    word_timestamps=False
+                )
+                text_en = " ".join([segment.text.strip() for segment in segments_en])
+                confidence_en = info_en.language_probability
+                
+                # Выбираем язык с БОЛЬШЕЙ уверенностью
+                print(f"   📊 Русский: '{text_ru}' (уверенность: {confidence_ru:.2%})")
+                print(f"   📊 Английский: '{text_en}' (уверенность: {confidence_en:.2%})")
+                
+                if confidence_ru > confidence_en:
+                    result_text = text_ru
+                    print(f"   ✅ Выбран русский (выше уверенность)")
+                else:
+                    result_text = text_en
+                    print(f"   ✅ Выбран английский (выше уверенность)")
             else:
                 # Язык поддерживается
                 print(f"📝 Распознано за {elapsed_time:.2f} сек: '{result_text}'")
