@@ -4,17 +4,18 @@ import sys
 import os
 from pathlib import Path
 
+
 def run_git_command(cmd, check=True):
     """Выполняет git команду и возвращает результат"""
     try:
         result = subprocess.run(cmd, shell=True, check=check, 
                               capture_output=True, text=True, cwd=Path(__file__).parent)
-        # Объединяем stdout и stderr, так как Git пишет в оба потока
         output = result.stdout + result.stderr
         return output.strip(), result.returncode
     except subprocess.CalledProcessError as e:
         output = e.stdout + e.stderr
         return output.strip(), e.returncode
+
 
 def ensure_gitignore():
     """Проверяет наличие .gitignore и добавляет config.py если нужно"""
@@ -29,6 +30,20 @@ def ensure_gitignore():
             print("📝 Добавляю config.py в .gitignore...")
             with open(gitignore_path, 'a') as f:
                 f.write('\nconfig.py\n')
+
+
+def get_current_branch():
+    """Получает текущую ветку или создает main если её нет"""
+    branch, returncode = run_git_command("git rev-parse --abbrev-ref HEAD", check=False)
+    
+    # Если нет ветки или detached HEAD
+    if returncode != 0 or branch == "HEAD":
+        print("⚠️  Ветка не определена. Создаю ветку 'main'...")
+        run_git_command("git checkout -b main", check=False)
+        return "main"
+    
+    return branch
+
 
 def main():
     print("🚀 Автоматическая отправка проекта на GitHub\n")
@@ -66,7 +81,6 @@ def main():
     print("\n💬 Введите сообщение коммита:")
     commit_msg = input("> ").strip()
     
-    # Проверяем, что сообщение не пустое
     if not commit_msg:
         print("⚠️ Сообщение коммита не может быть пустым!")
         commit_msg = input("Попробуйте ещё раз: ").strip()
@@ -82,12 +96,13 @@ def main():
         print(f"❌ Ошибка при коммите: {output}")
         sys.exit(1)
     
-    # Получаем текущую ветку
-    branch, _ = run_git_command("git rev-parse --abbrev-ref HEAD")
+    # Получаем текущую ветку (с созданием если нужно)
+    branch = get_current_branch()
+    print(f"📌 Работаем с веткой: {branch}")
     
-    # Пытаемся запушить
+    # Устанавливаем upstream при первом push
     print("📤 Отправляем на GitHub...")
-    output, returncode = run_git_command(f"git push origin {branch}", check=False)
+    output, returncode = run_git_command(f"git push -u origin {branch}", check=False)
     
     # Если push не удался из-за удалённых изменений
     if returncode != 0 and ("fetch first" in output or "rejected" in output):
@@ -106,6 +121,7 @@ def main():
         sys.exit(1)
     
     print("\n✅ Проект успешно отправлен на GitHub!")
+
 
 if __name__ == "__main__":
     main()
