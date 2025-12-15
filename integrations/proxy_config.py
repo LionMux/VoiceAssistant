@@ -10,13 +10,14 @@ import time
 import tempfile
 import zipfile
 import platform
-import psutil 
+import psutil
+import config
 from urllib.parse import urlparse, parse_qs, unquote
 
 # === НАСТРОЙКИ ===
-SUBSCRIPTION_URL = "https://key.vpn-one.com/c/1d8ae10d-8dff-4925-b12c-053fafd6b9cc"
+SUBSCRIPTION_URL = config.VPN_URL
 SOCKS_PORT = 10808
-
+SUB_CACHE_FILE = os.path.join(os.path.expanduser("~"), ".xray_spotify", "subscription_cache.txt")
 # === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
 _xray_process = None
 _xray_config_file = None
@@ -247,6 +248,9 @@ def _parse_vmess(link):
 
 def _get_subscription_links():
     """Получает ссылки из subscription"""
+    cache_dir = os.path.join(os.path.expanduser("~"), ".xray_spotify")
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path = os.path.join(cache_dir, "subscription_cache.txt")
     try:
         response = requests.get(SUBSCRIPTION_URL, timeout=10)
         response.raise_for_status()
@@ -271,15 +275,50 @@ def _get_subscription_links():
                         line.startswith('ss://') or 
                         line.startswith('trojan://')):
                 links.append(line)
+        if links:
+            try:
+                with open(cache_path, 'w', encoding='utf-8') as f:
+                    f.write(decoded)
+                print(f"✅ Кэш подписки обновлен")
+            except Exception:
+                pass 
         
         print(f"✅ Получено {len(links)} конфигураций")
         return links
         
     except Exception as e:
         print(f"❌ Ошибка получения subscription: {e}")
+        
+        # Пробуем использовать кэш
+        try:
+            if os.path.exists(cache_path):
+                print("🔄 Попытка использовать кэш подписки...")
+                with open(cache_path, 'r', encoding='utf-8') as f:
+                    cached_decoded = f.read()
+                
+                # Парсим кэш так же как обычную подписку
+                links = []
+                for line in cached_decoded.split('\n'):
+                    line = line.strip()
+                    if line and (line.startswith('vless://') or 
+                                line.startswith('vmess://') or 
+                                line.startswith('ss://') or 
+                                line.startswith('trojan://')):
+                        links.append(line)
+                
+                if links:
+                    print(f"✅ Использую кэш подписки: {len(links)} конфигураций")
+                    return links  # ← ВЫХОДИМ ЕСЛИ КЭШ ЕСТЬ
+            else:
+                print("⚠️ Кэш подписки не найден")
+        except Exception as cache_error:
+            print(f"⚠️ Не удалось прочитать кэш: {cache_error}")
+        
+        # Если кэш не помог - выводим traceback и возвращаем пустой список
         import traceback
-        traceback.print_exc()  # Для отладки
+        traceback.print_exc()
         return []
+
 
 
 

@@ -138,13 +138,13 @@ class VoiceAssistant:
                 return None
         
         return self.whisper
+    
     def _init_vosk(self):
         try:
             self.vosk = VoskRecognizer()
         except Exception as e:
             print(f"Vosk не инициализирован:{e}")
             self.vosk = None
-    
     
     def listen_for_wake_word(self):
         
